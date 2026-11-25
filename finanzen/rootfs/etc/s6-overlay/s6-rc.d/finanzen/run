@@ -1,0 +1,10 @@
+#!/command/with-contenv bashio
+# shellcheck shell=bash
+# ==============================================================================
+# Start the Finanzen app. Options are read by the app from /data/options.json.
+# ==============================================================================
+
+cd /opt/finanzen || bashio::exit.nok "Cannot change to /opt/finanzen"
+
+bashio::log.info "Starting Finanzen..."
+exec python3 -m finanzen --data /data --port 8099

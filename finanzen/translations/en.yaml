@@ -1,0 +1,7 @@
+configuration:
+  kursintervall:
+    name: Price interval (minutes)
+    description: How often the app fetches prices on weekdays between 8:00 and 22:00. Otherwise once a day.
+  log_level:
+    name: Log level
+    description: How much detail the app writes to the log.

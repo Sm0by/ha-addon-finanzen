@@ -1,0 +1,7 @@
+configuration:
+  kursintervall:
+    name: Kursabruf (Minuten)
+    description: Wie oft die App montags bis freitags zwischen 8 und 22 Uhr die Kurse abruft. Sonst einmal am Tag.
+  log_level:
+    name: Log-Level
+    description: Wie ausführlich die App ins Protokoll schreibt.

@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - name: App linter
+        uses: frenck/action-addon-linter@v2
+        with:
+          path: "./finanzen"
+      - name: ShellCheck
+        run: |
+          shellcheck --shell=bash \
+            finanzen/rootfs/etc/s6-overlay/s6-rc.d/finanzen/run \
+            finanzen/rootfs/etc/s6-overlay/s6-rc.d/finanzen/finish
+
+  test:
+    name: Tests
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - run: pip install aiohttp lxml openpyxl paho-mqtt pytest
+      - run: python -m pytest -q tests
+
+  build:
+    name: Build and smoke test (${{ matrix.arch }})
+    needs: [lint, test]
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v5
+      - uses: docker/setup-buildx-action@v3
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./finanzen
+          push: false
+          load: true
+          tags: local/finanzen:test
+          build-args: |
+            BUILD_ARCH=${{ matrix.arch }}
+            BUILD_VERSION=ci
+      - name: Smoke test
+        run: |
+          docker run -d --name fin -p 8099:8099 --entrypoint python3 -w /opt/finanzen local/finanzen:test \
+            -m finanzen --dev --data /tmp/data
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:8099/api/state > /dev/null; then break; fi
+            sleep 2
+          done
+          curl -fsS http://localhost:8099/api/state | head -c 300
+          echo
+      - name: App log
+        if: always()
+        run: docker logs fin || true
