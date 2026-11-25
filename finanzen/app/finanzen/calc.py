@@ -416,7 +416,11 @@ def build_state(db: Database, now: dt.datetime, meta: dict) -> dict:
             "gold_value": pf["gold_value"],
             "invested": pf["invested"],
             "invested_gold": pf["invested_gold"],
+            "invested_depot": pf["invested_depot"],
             "result": pf["result"],
+            # Split of the overall result: value of the category minus what was paid into it
+            "result_depot": pf["depot_value"] - pf["invested_depot"],
+            "result_gold": pf["gold_value"] - pf["invested_gold"],
             "div_year": sum(d["amount"] for d in div_rows if d["date"].startswith(year)),
             "div_total": pf["div_total"],
             "dividends": div_rows,

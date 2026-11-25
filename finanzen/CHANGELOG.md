@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.2.1
+
+- Depot: Die Kacheln „Wert Depot“ und „Wert Gold“ zeigen Gewinn oder Verlust der Kategorie (Wert minus
+  eingezahlt, in Euro und Prozent). Zusammen ergeben sie das „Ergebnis seit Beginn“
+
 ## 1.2.0
 
 - Import des Transaktionsexports von Trade Republic (.csv) unter Einstellungen › Trade Republic, mit

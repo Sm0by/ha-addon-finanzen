@@ -101,3 +101,7 @@ def test_state_builds(db):
     assert state["month"]["label"] == "November 2026"
     assert len(state["depot"]["positions"]) == 4
     assert state["fixed"]["missing"] == ["Hausrat"]
+    dep = state["depot"]
+    assert dep["result_depot"] == pytest.approx(dep["depot_value"] - dep["invested_depot"])
+    assert dep["result_gold"] == pytest.approx(dep["gold_value"] - dep["invested_gold"])
+    assert dep["result_depot"] + dep["result_gold"] == pytest.approx(dep["result"])

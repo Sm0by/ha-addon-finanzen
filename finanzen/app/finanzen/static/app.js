@@ -391,10 +391,11 @@
     const names = [...new Set([...dep.names, ...dep.dividends.map((x) => x.position)])];
     if (!ui.dividend.position && names.length) ui.dividend.position = names[0];
     const divList = dep.dividends.slice(0, 12).map((x) => `<div class="line"><span><span class="faint num" style="display:inline-block;min-width:92px">${deDate(x.date)}</span>${esc(x.position)}</span><span style="display:flex;align-items:center;gap:4px"><span class="num">${eur(x.amount)}</span><button type="button" class="icon" data-action="del-dividend" data-id="${x.id}" aria-label="Dividende ${esc(x.position)} löschen">${X_ICON}</button></span></div>`).join("");
+    const gainLine = (gain, invested) => `<span class="num ${tone(gain)}" style="display:block;font-size:14px">${signed(gain)}${invested > 0.005 ? ` (${pct((gain / invested) * 100)})` : ""}</span>`;
     return `
       <div class="row">
-        ${tile("Wert Depot", eur(dep.depot_value), `${dep.positions.length} offene Positionen`)}
-        ${tile("Wert Gold", eur(dep.gold_value), `eingezahlt ${eur(dep.invested_gold)}`)}
+        ${tile("Wert Depot", eur(dep.depot_value), `${gainLine(dep.result_depot, dep.invested_depot)}eingezahlt ${eur(dep.invested_depot)} · ${dep.positions.length} offene Positionen`)}
+        ${tile("Wert Gold", eur(dep.gold_value), `${gainLine(dep.result_gold, dep.invested_gold)}eingezahlt ${eur(dep.invested_gold)}`)}
         ${tile("Dividenden " + d.meta.today.slice(0, 4), eur(dep.div_year), `gesamt ${eur(dep.div_total)}`)}
         ${tile("Ergebnis seit Beginn", signed(dep.result), `Wert minus eingezahlte ${eur(dep.invested)}`, tone(dep.result))}
       </div>
