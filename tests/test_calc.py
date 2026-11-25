@@ -105,3 +105,4 @@ def test_state_builds(db):
     assert dep["result_depot"] == pytest.approx(dep["depot_value"] - dep["invested_depot"])
     assert dep["result_gold"] == pytest.approx(dep["gold_value"] - dep["invested_gold"])
     assert dep["result_depot"] + dep["result_gold"] == pytest.approx(dep["result"])
+    assert dep["result_depot_div"] == pytest.approx(dep["result_depot"] + dep["div_total"])

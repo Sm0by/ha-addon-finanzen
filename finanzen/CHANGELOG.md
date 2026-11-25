@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.2.2
+
+- Depot: „Wert Depot“ zeigt Gewinn oder Verlust ohne und mit Dividenden
+
 ## 1.2.1
 
 - Depot: Die Kacheln „Wert Depot“ und „Wert Gold“ zeigen Gewinn oder Verlust der Kategorie (Wert minus
