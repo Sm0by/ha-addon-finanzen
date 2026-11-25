@@ -70,6 +70,31 @@ Unter **Depot › Kauf oder Verkauf buchen**:
 
 Jede Änderung lässt sich unter **Einstellungen › Änderungsverlauf** zurücknehmen.
 
+## Import aus Trade Republic
+
+Statt Käufe und Verkäufe einzeln zu buchen, kann die App den Transaktionsexport von Trade Republic lesen.
+In der Trade-Republic-App: **Profil › Kontoauszüge › Transaktionsexport**, die .csv-Datei dann unter
+**Einstellungen › Trade Republic** hochladen.
+
+- Zuerst kommt eine **Vorschau**, dabei ändert sich nichts: Depotwert, Einzahlungen, Ergebnis, realisierte
+  Gewinne und Dividenden vorher und nachher, geänderte Positionen, Verkäufe, neue Dividenden und die
+  Einzahlungen je Jahr. Erst **Übernehmen** schreibt, und der ganze Import lässt sich im Änderungsverlauf
+  zurücknehmen.
+- Gelesen werden nur Wertpapier-Buchungen (Käufe, Verkäufe, Dividenden, Splits, Saveback, Aktiengeschenke).
+  Kartenzahlungen, Überweisungen und IBANs werden übersprungen und nicht gespeichert.
+- Positionen werden über die ISIN zugeordnet, verkaufte Positionen ohne ISIN über den Namen. Fehlende
+  Positionen legt der Import an, auch längst verkaufte mit ihrem Gewinn.
+- **Anteile und Einstand** kommen aus dem Export: Einstand mit Kaufgebühren, Gewinne nach dem
+  Durchschnittskurs, Gutschrift nach Gebühren und Steuern. Splits erhöhen die Anteile.
+- **Dividenden** zählen nach Steuern. Schon vorhandene (gleicher Betrag, Datum bis 45 Tage daneben) werden
+  erkannt, die übrigen ergänzt.
+- **Einzahlungen ins Depot** werden vom ersten bis zum letzten Monat des Exports ersetzt: Käufe mit Gebühren
+  minus Verkaufserlöse. Saveback und Aktiengeschenke zahlt Trade Republic, sie zählen nicht als eigene
+  Einzahlung und landen damit im Ergebnis. Gold bleibt unverändert.
+- Von Hand gebuchte Käufe und Verkäufe derselben Positionen ersetzt der Export.
+- Die App merkt sich alle gelesenen Buchungen. Ein späterer Export muss deshalb nur die neuen Wochen
+  enthalten, doppelte Buchungen erkennt sie an der Transaktions-ID.
+
 ## Sensoren in Home Assistant
 
 Über den MQTT-Broker (Mosquitto) entsteht das Gerät **Finanzen** mit diesen Entitäten:

@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.2.0
+
+- Import des Transaktionsexports von Trade Republic (.csv) unter Einstellungen › Trade Republic, mit
+  Vorschau vor dem Übernehmen und Rücknahme im Änderungsverlauf
+- Anteile, Einstand mit Gebühren, realisierte Gewinne, Splits, Dividenden nach Steuern und die monatlichen
+  Einzahlungen ins Depot kommen aus dem Export; verkaufte Positionen werden mit ihrem Gewinn angelegt
+- Saveback und Aktiengeschenke zählen nicht als eigene Einzahlung
+- Nur Wertpapier-Buchungen werden gelesen und gespeichert, Kartenzahlungen und IBANs nicht
+- Spätere Exporte ergänzen die gespeicherten Buchungen, doppelte erkennt die App an der Transaktions-ID
+- Export als .xlsx enthält Gebühren, Steuern und die Buchungen aus Trade Republic
+
 ## 1.1.1
 
 - Import: Aktien wurden als Krypto eingestuft, weil die Summenzeile „Wert ETF's, Aktien, Crypto Aktuell“ mitgezählt wurde

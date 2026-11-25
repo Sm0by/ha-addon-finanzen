@@ -12,6 +12,7 @@
     dividend: { position: "", date: today(), amount: "" },
     services: null,
     search: null,
+    tr: null,
     busy: false,
   };
   if (!VIEWS.includes(ui.view)) ui.view = "uebersicht";
@@ -272,6 +273,86 @@
       <span class="muted" data-filename>keine Datei gewählt</span>
       <button type="submit" class="btn">Importieren</button>
     </form>`;
+  }
+
+  function trCard(d) {
+    const last = d.meta.last_tr_import;
+    const tr = ui.tr || {};
+    return `<section class="card"><h2>Trade Republic</h2><p class="sub">Transaktionsexport als .csv · in der Trade-Republic-App unter Profil › Kontoauszüge › Transaktionsexport</p>
+      <div class="line"><span>Letzter Import</span><span>${last ? `${esc(when(last.at))} · Export bis ${deDate(last.until)}` : "noch keiner"}</span></div>
+      ${last ? `<p class="faint" style="font-size:12.5px">${esc(last.summary)}</p>` : ""}
+      <form data-form="tr" class="actions">
+        <label class="ghost" style="display:inline-flex;align-items:center">.csv-Datei wählen<input type="file" name="file" accept=".csv,text/csv" style="position:absolute;opacity:0;width:1px;height:1px"></label>
+        <span class="muted" data-filename>${tr.file ? esc(tr.file.name) : "keine Datei gewählt"}</span>
+        <button type="submit" class="btn" ${tr.loading ? "disabled" : ""}>${tr.loading ? "Lese …" : "Vorschau"}</button>
+      </form>
+      <p class="faint" style="font-size:12.5px;margin-top:8px">Zuerst kommt eine Vorschau, dabei ändert sich nichts. Gelesen werden nur Wertpapier-Buchungen, Kartenzahlungen und IBANs bleiben außen vor. Saveback und Aktiengeschenke zählen nicht als eigene Einzahlung.</p>
+      ${tr.preview ? trPreview(tr.preview) : ""}
+    </section>`;
+  }
+
+  function trPreview(p) {
+    const b = p.totals.before;
+    const a = p.totals.after;
+    const info = p.info;
+    const h = (text) => `<h2 style="font-size:14px;margin-top:18px">${text}</h2>`;
+    const monthText = (m) => `${m.slice(5, 7)}.${m.slice(0, 4)}`;
+    const diff = (x, y) => (Math.abs(y - x) < 0.005 ? '<span class="faint">–</span>' : `<span class="${tone(y - x)}">${signed(y - x)}</span>`);
+    const plainDiff = (x, y) => (Math.abs(y - x) < 0.005 ? '<span class="faint">–</span>' : signed(y - x));
+    const total = (label, x, y) => `<tr><td>${label}</td><td class="num">${eur(x)}</td><td class="num">${eur(y)}</td><td class="num">${diff(x, y)}</td></tr>`;
+    const totals = `<div class="table-wrap"><table class="t"><thead><tr><th></th><th class="num">bisher</th><th class="num">nach dem Import</th><th class="num">Unterschied</th></tr></thead><tbody>
+      ${total("Depotwert", b.depot_value, a.depot_value)}<tr><td>Eingezahlt ins Depot</td><td class="num">${eur(b.invested_depot)}</td><td class="num">${eur(a.invested_depot)}</td><td class="num">${plainDiff(b.invested_depot, a.invested_depot)}</td></tr>${total("Ergebnis", b.result, a.result)}${total("Realisierte Gewinne", b.realized, a.realized)}${total("Dividenden", b.div_total, a.div_total)}
+    </tbody></table></div>`;
+
+    const shares = (v) => (v === null || v === undefined ? "–" : plain(v, 6) || "0");
+    const realized = (v) => (v === null || v === undefined ? "–" : signed(v));
+    const shown = p.positions.filter((x) => x.changed || x.match !== "isin" || x.isin_old !== undefined);
+    const pair = (x, key, f, eps) => {
+      const nv = x.new[key];
+      if (!x.old) return f(nv);
+      const ov = x.old[key];
+      const same = (ov === null || ov === undefined) === (nv === null || nv === undefined) && Math.abs((ov || 0) - (nv || 0)) <= eps;
+      return same ? f(nv) : `<span class="faint">${f(ov)} →</span> ${f(nv)}`;
+    };
+    const posRows = shown.map((x) => {
+      const notes = [];
+      if (x.match === "neu") notes.push('<span class="good">neu</span>');
+      if (x.match === "name") notes.push(`<span class="warn">über den Namen zugeordnet (${esc(x.tr_name)})</span>`);
+      if (x.new.shares <= 0.000001 && x.new.sold_at) notes.push(`verkauft am ${deDate(x.new.sold_at)}`);
+      if (x.isin_old !== undefined) notes.push(`ISIN ${x.isin_old ? `${esc(x.isin_old)} → ` : ""}${esc(x.isin)}`);
+      return `<tr><td>${esc(x.name)}${notes.length ? `<div class="faint" style="font-size:12px">${notes.join(" · ")}</div>` : ""}</td>
+        <td class="num">${pair(x, "shares", shares, 0.000001)}</td><td class="num">${pair(x, "cost", eur, 0.005)}</td><td class="num">${pair(x, "realized", realized, 0.005)}</td></tr>`;
+    }).join("");
+    const unchanged = p.positions.length - shown.length;
+    const positions = shown.length ? `<div class="table-wrap"><table class="t" style="min-width:560px"><thead><tr><th>Position</th><th class="num">Anteile</th><th class="num">Ø Einstand</th><th class="num">Realisiert</th></tr></thead><tbody>${posRows}</tbody></table></div>` : "";
+
+    const sales = p.sales.map((s) => `<div class="line"><span><span class="faint num" style="display:inline-block;min-width:92px">${deDate(s.date)}</span>${esc(s.name)} <span class="faint">· ${shares(s.shares)} Stk. · Gutschrift ${eur(s.credit)}</span></span><span class="num ${tone(s.gain)}">${signed(s.gain)}</span></div>`).join("");
+    const divNew = p.dividends_new.map((x) => `<div class="line"><span><span class="faint num" style="display:inline-block;min-width:92px">${deDate(x.date)}</span>${esc(x.position)}</span><span class="num">${eur(x.amount)}</span></div>`).join("");
+    const divApp = p.dividends_app_only.map((x) => `<div class="line"><span><span class="faint num" style="display:inline-block;min-width:92px">${deDate(x.date)}</span>${esc(x.position)}</span><span class="num">${eur(x.amount)}</span></div>`).join("");
+    const years = p.deposit_years.map((y) => `<tr><td>${esc(y.year)}</td><td class="num">${eur(y.old)}</td><td class="num">${eur(y.new)}</td><td class="num">${plainDiff(y.old, y.new)}</td></tr>`).join("");
+    const replaced = p.trades_replaced.map((t) => `<div class="line"><span><span class="faint num" style="display:inline-block;min-width:92px">${deDate(t.date)}</span>${t.kind === "kauf" ? "Kauf" : "Verkauf"} ${esc(t.position)}</span><span class="num ${t.after_export ? "warn" : ""}">${eur(t.amount)}</span></div>`).join("");
+    const warnings = p.warnings.map((w) => `<p class="warn" style="font-size:13px;margin:6px 0">${esc(w)}</p>`).join("");
+
+    if (!p.changes) {
+      return `<div class="card trp" style="background:var(--card2);margin:14px 0 0">
+        <p class="good" style="margin:0">Die App ist schon auf dem Stand dieses Exports.</p>${warnings}
+        <div class="actions"><button type="button" class="ghost" data-action="tr-close">Schließen</button></div></div>`;
+    }
+    return `<div class="card trp" style="background:var(--card2);margin:14px 0 0">
+      <h2>Vorschau</h2>
+      <p class="sub">Export vom ${deDate(info.first)} bis ${deDate(info.export_end)} · ${info.security_rows} Wertpapier-Buchungen, davon ${info.new_rows} neu</p>
+      ${warnings}
+      ${totals}
+      ${h("Positionen")}${positions}<p class="faint" style="font-size:12.5px">${unchanged ? `${unchanged} weitere ${unchanged === 1 ? "Position stimmt" : "Positionen stimmen"} schon. ` : ""}Einstand inklusive Kaufgebühren, Gewinne nach dem Durchschnittskurs.</p>
+      ${p.sales.length ? h(`Verkäufe (${p.sales.length})`) + sales : ""}
+      ${h("Dividenden")}<p class="faint" style="font-size:12.5px">${p.dividends_matched} schon in der App, ${p.dividends_new.length} neu · Beträge nach Steuern</p>${divNew}
+      ${divApp ? `<p class="faint" style="font-size:12.5px;margin-top:10px">Nur in der App, nicht im Export (bleiben erhalten):</p>${divApp}` : ""}
+      ${h("Einzahlungen ins Depot je Jahr")}
+      <div class="table-wrap"><table class="t"><thead><tr><th>Jahr</th><th class="num">bisher</th><th class="num">laut Export</th><th class="num">Unterschied</th></tr></thead><tbody>${years}</tbody></table></div>
+      <p class="faint" style="font-size:12.5px">Ersetzt werden die Monate ${monthText(p.deposit_range.first)} bis ${monthText(p.deposit_range.last)}: Käufe mit Gebühren minus Verkaufserlöse, ohne Saveback und Aktiengeschenke (${eur(p.bonus)}). Gold bleibt, wie es ist.</p>
+      ${replaced ? h("Von Hand gebuchte Käufe und Verkäufe, die der Export ersetzt") + replaced : ""}
+      <div class="actions"><button type="button" class="btn" data-action="tr-apply">Übernehmen</button><button type="button" class="ghost" data-action="tr-close">Verwerfen</button><span class="faint" style="font-size:12.5px">Lässt sich im Änderungsverlauf zurücknehmen</span></div>
+    </div>`;
   }
 
   function viewDepot(d) {
@@ -537,6 +618,7 @@
           </div>
         </section>
       </div>
+      <div class="row">${trCard(d)}</div>
       <div class="row">
         <section class="card"><h2>Daten</h2><p class="sub">Import aus dem Google Sheet und Export als .xlsx</p>
           <div class="line"><span>Letzter Import</span><span>${imp ? esc(when(imp.at)) : "noch keiner"}</span></div>
@@ -656,6 +738,17 @@
         break;
       }
       case "search-close": ui.search = null; render(); break;
+      case "tr-close": ui.tr = null; render(); break;
+      case "tr-apply": {
+        if (!ui.tr || !ui.tr.file) break;
+        el.disabled = true;
+        el.textContent = "Übernehme …";
+        const fd = new FormData();
+        fd.append("file", ui.tr.file);
+        const res = await act("POST", "api/tr/apply", undefined, fd);
+        if (res) { ui.tr = null; render(); } else { el.disabled = false; el.textContent = "Übernehmen"; }
+        break;
+      }
       case "search-pick": {
         const pid = ui.search.id;
         const res = await act("PATCH", `api/positions/${pid}`, { source: "tradegate", isin: el.dataset.isin });
@@ -679,8 +772,10 @@
     }
     if (t.dataset.div) ui.dividend[t.dataset.div] = t.value;
     if (t.type === "file") {
-      const label = t.closest("form").querySelector("[data-filename]");
+      const form = t.closest("form");
+      const label = form.querySelector("[data-filename]");
       if (label) label.textContent = t.files[0] ? t.files[0].name : "keine Datei gewählt";
+      if (form.dataset.form === "tr") ui.tr = { file: t.files[0] || null, preview: null, loading: false };
     }
   });
 
@@ -728,6 +823,21 @@
     } else if (kind === "account") {
       const data = new FormData(form);
       await act("POST", "api/accounts", { name: data.get("name") });
+    } else if (kind === "tr") {
+      const input = form.querySelector('input[type="file"]');
+      const file = (input.files && input.files[0]) || (ui.tr && ui.tr.file);
+      if (!file) { toast("Bitte erst die .csv-Datei von Trade Republic wählen", true); return; }
+      ui.tr = { file, preview: null, loading: true };
+      render();
+      try {
+        const fd = new FormData();
+        fd.append("file", file);
+        const res = await api("POST", "api/tr/preview", undefined, fd);
+        ui.tr = { file, preview: res.preview, loading: false };
+      } catch (err) {
+        ui.tr = { file, preview: null, loading: false };
+      }
+      render();
     } else if (kind === "import") {
       const file = form.querySelector('input[type="file"]').files[0];
       if (!file) { toast("Bitte erst eine .xlsx-Datei wählen", true); return; }

@@ -9,7 +9,7 @@ import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS settings (
@@ -47,7 +47,9 @@ CREATE TABLE IF NOT EXISTS dividends (
     id INTEGER PRIMARY KEY,
     date TEXT NOT NULL,
     position TEXT NOT NULL,
-    amount REAL NOT NULL
+    amount REAL NOT NULL,
+    tax REAL,
+    tx TEXT
 );
 CREATE TABLE IF NOT EXISTS trades (
     id INTEGER PRIMARY KEY,
@@ -57,7 +59,9 @@ CREATE TABLE IF NOT EXISTS trades (
     position TEXT NOT NULL,
     shares REAL NOT NULL,
     amount REAL NOT NULL,
-    gain REAL
+    gain REAL,
+    fee REAL,
+    tx TEXT
 );
 CREATE TABLE IF NOT EXISTS deposits (
     month TEXT PRIMARY KEY,
@@ -117,6 +121,20 @@ CREATE TABLE IF NOT EXISTS daily (
     crypto REAL,
     gold REAL
 );
+CREATE TABLE IF NOT EXISTS tr_transactions (
+    tx TEXT PRIMARY KEY,
+    at TEXT NOT NULL,
+    date TEXT NOT NULL,
+    type TEXT NOT NULL,
+    isin TEXT NOT NULL,
+    name TEXT NOT NULL,
+    asset_class TEXT NOT NULL DEFAULT '',
+    shares REAL NOT NULL DEFAULT 0,
+    price REAL,
+    amount REAL NOT NULL DEFAULT 0,
+    fee REAL NOT NULL DEFAULT 0,
+    tax REAL NOT NULL DEFAULT 0
+);
 CREATE TABLE IF NOT EXISTS activity (
     id INTEGER PRIMARY KEY,
     at TEXT NOT NULL,
@@ -144,12 +162,20 @@ KEYS = {
     "accounts": ("id",),
     "payments": ("id",),
     "settings": ("key",),
+    "tr_transactions": ("tx",),
 }
 
 DATA_TABLES = (
     "positions", "dividends", "trades", "deposits", "fixed_costs", "categories",
-    "spending", "accounts", "payments", "daily",
+    "spending", "accounts", "payments", "daily", "tr_transactions",
 )
+
+# Columns added after the first release: table -> {column: definition}
+ADDED_COLUMNS = {
+    "positions": {"isin": "TEXT NOT NULL DEFAULT ''"},
+    "dividends": {"tax": "REAL", "tx": "TEXT"},
+    "trades": {"fee": "REAL", "tx": "TEXT"},
+}
 
 
 def now_iso() -> str:
@@ -170,9 +196,11 @@ class Database:
 
     def _migrate(self) -> None:
         """Add columns of newer versions to an existing database."""
-        columns = {row["name"] for row in self.q("PRAGMA table_info(positions)")}
-        if "isin" not in columns:
-            self.conn.execute("ALTER TABLE positions ADD COLUMN isin TEXT NOT NULL DEFAULT ''")
+        for table, added in ADDED_COLUMNS.items():
+            columns = {row["name"] for row in self.q(f"PRAGMA table_info({table})")}
+            for column, definition in added.items():
+                if column not in columns:
+                    self.conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
         self.set_setting("schema_version", SCHEMA_VERSION)
 
     # ------------------------------------------------------------------ basics

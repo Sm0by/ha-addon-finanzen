@@ -9,7 +9,7 @@ from pathlib import Path
 
 from aiohttp import web
 
-from . import calc
+from . import calc, trimport
 from .core import FinanzenApp
 from .db import now_iso
 from .exporter import export_workbook
@@ -374,8 +374,7 @@ def create_web_app(core: FinanzenApp) -> web.Application:
         return done("Testnachricht gesendet" if sent else "Kein Ziel für Benachrichtigungen gewählt")
 
     # ------------------------------------------------------ import and export
-    @routes.post("/api/import")
-    async def do_import(request):
+    async def upload(request) -> bytes:
         data = None
         if request.content_type.startswith("multipart/"):
             reader = await request.multipart()
@@ -386,9 +385,14 @@ def create_web_app(core: FinanzenApp) -> web.Application:
             data = await request.read()
         if not data:
             raise ValueError("Keine Datei erhalten")
+        return bytes(data)
+
+    @routes.post("/api/import")
+    async def do_import(request):
+        data = await upload(request)
         backup = core.data_dir / "vor-import.db"
         db.backup_to(backup)
-        report = import_workbook(db, bytes(data))
+        report = import_workbook(db, data)
         db.set_setting("import_backup", {"at": now_iso(), "file": backup.name})
         core.changed()
         await core.refresh_prices()
@@ -404,6 +408,21 @@ def create_web_app(core: FinanzenApp) -> web.Application:
         backup.unlink()
         db.log("Import zurückgenommen, Stand vor dem Import wiederhergestellt")
         return done("Stand vor dem Import wiederhergestellt")
+
+    @routes.post("/api/tr/preview")
+    async def tr_preview(request):
+        data = await upload(request)
+        return _json({"ok": True, "preview": trimport.preview(db, data)})
+
+    @routes.post("/api/tr/apply")
+    async def tr_apply(request):
+        data = await upload(request)
+        result = trimport.apply(db, data)
+        db.log(result["text"])
+        if result["new_open"]:
+            core.changed()
+            await core.refresh_prices()
+        return done(result["text"])
 
     @routes.get("/api/export.xlsx")
     async def export(_request):

@@ -389,6 +389,7 @@ def build_state(db: Database, now: dt.datetime, meta: dict) -> dict:
                      sources_total=len(sources), sources_errors=len(errors),
                      last_prices=db.get_setting("last_price_run", None),
                      last_import=db.get_setting("last_import", None),
+                     last_tr_import=db.get_setting("tr_import", None),
                      empty=not db.scalar("SELECT COUNT(*) FROM positions") and not db.scalar(
                          "SELECT COUNT(*) FROM fixed_costs")),
         "overview": {
