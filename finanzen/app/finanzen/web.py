@@ -14,7 +14,8 @@ from .core import FinanzenApp
 from .db import now_iso
 from .exporter import export_workbook
 from .importer import ImportError_, import_workbook
-from .util import parse_number
+from .prices import ISIN_RE, PriceError, search_instruments
+from .util import isin_valid, parse_number
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -22,7 +23,7 @@ STATIC = Path(__file__).parent / "static"
 INGRESS_IPS = {"172.30.32.2", "127.0.0.1", "::1"}
 
 POSITION_FIELDS = {
-    "name": str, "kind": str, "shares": float, "cost": float, "source": str, "symbol": str, "url": str,
+    "name": str, "kind": str, "shares": float, "cost": float, "source": str, "isin": str, "symbol": str, "url": str,
     "xpath": str, "factor": float, "fallback_url": str, "fallback_xpath": str,
 }
 FIXED_FIELDS = {
@@ -60,8 +61,12 @@ def _clean(fields: dict, body: dict, *, partial: bool = True) -> dict:
         raise ValueError("Unbekanntes Intervall")
     if "grp" in data and data["grp"] not in calc.GROUPS:
         raise ValueError("Unbekannte Gruppe")
-    if "source" in data and data["source"] not in ("yahoo", "web", "manual"):
+    if "source" in data and data["source"] not in ("tradegate", "yahoo", "web", "manual"):
         raise ValueError("Unbekannte Kursquelle")
+    if data.get("isin"):
+        data["isin"] = data["isin"].replace(" ", "").upper()
+        if not ISIN_RE.match(data["isin"]) or not isin_valid(data["isin"]):
+            raise ValueError(f"„{data['isin']}“ ist keine gültige ISIN (Prüfziffer passt nicht)")
     if "installments" in data:
         data["installments"] = max(1, min(12, data["installments"]))
     return data
@@ -146,7 +151,8 @@ def create_web_app(core: FinanzenApp) -> web.Application:
             today = dt.date.today().isoformat()
             data.update(price=price, price_at=now_iso(), price_day=today, status="von Hand", error_since=None,
                         change_pct=None)
-        if any(k in data for k in ("source", "symbol", "url", "xpath", "factor", "fallback_url", "fallback_xpath")):
+        if any(k in data for k in ("source", "isin", "symbol", "url", "xpath", "factor", "fallback_url",
+                                   "fallback_xpath")):
             data["status"] = "geändert, bitte testen"
             data["error_since"] = None
         for key in ("shares", "cost", "factor"):
@@ -155,6 +161,19 @@ def create_web_app(core: FinanzenApp) -> web.Application:
         with db.change(f"{pos['name']} geändert"):
             db.update("positions", {"id": pid}, data)
         return done()
+
+    @routes.get("/api/search")
+    async def search(request):
+        query = request.query.get("q", "").strip()
+        if len(query) < 2:
+            raise ValueError("Bitte mindestens zwei Zeichen eingeben")
+        try:
+            results = await search_instruments(core.session, query)
+        except PriceError as err:
+            raise ValueError(str(err)) from err
+        except Exception as err:  # network problems
+            raise ValueError(f"Suche fehlgeschlagen: {err}") from err
+        return _json({"query": query, "results": results})
 
     @routes.delete("/api/positions/{pid}")
     async def delete_position(request):

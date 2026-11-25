@@ -14,8 +14,22 @@ Der Import übernimmt alle Blätter: Fixkosten aus „Abonnements“ und „Sons
 „DaylisAVG“, Positionen, Gold, Dividenden, Monatssummen und Konten aus „Investments“, die Tageswerte aus
 „Berechnungen“, das Gehalt aus „Summen“ und die Zahlungsliste aus „Aktueller Monat“. Die Kursquellen
 werden aus den Formeln gelesen: `GOOGLEFINANCE("ETR:VOW")` wird zum Yahoo-Symbol `VOW.DE`,
-`IMPORTXML(Adresse; Pfad)` zur Webseite mit Auswahlpfad. Prüfe die Quellen nach dem Import unter
-**Einstellungen › Kursquellen** mit **Testen**.
+`IMPORTXML(Adresse; Pfad)` zur Webseite mit Auswahlpfad. Steht in der Adresse eine ISIN, nimmt die App
+Tradegate.
+
+## Kursquellen
+
+| Quelle | Eingabe | Hinweis |
+| --- | --- | --- |
+| Tradegate | ISIN | Empfohlen. Kurse in Euro, auch ohne Umsatz am Tag (Mitte aus Geld und Brief). |
+| Yahoo | Symbol, z. B. `SAP.DE` | Yahoo blockiert Abrufe ohne Browser oft mit HTTP 429. |
+| Webseite | Adresse und XPath | Wie IMPORTXML. Viele Seiten blockieren Programme oder ändern ihren Aufbau. |
+| von Hand | Kurs | Für Werte ohne Börsenkurs. |
+
+Unter **Einstellungen › Kursquellen** findet **ISIN suchen** die ISIN zum Namen. **Übernehmen** stellt
+die Position auf Tradegate um und ruft den Kurs gleich ab. Ist eine ISIN eingetragen, springt Tradegate
+auch ein, wenn die gewählte Quelle ausfällt. Gold läuft über Xetra-Gold (ISIN `DE000A0S9GB0`, ein Anteil
+entspricht einem Gramm Gold).
 
 Ein neuer Import ersetzt alle Daten. **Stand vor dem Import wiederherstellen** nimmt ihn zurück.
 

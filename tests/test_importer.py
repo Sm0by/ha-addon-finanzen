@@ -50,13 +50,18 @@ def test_positions_and_sources(db):
     assert pos["Beispiel AG"]["source"] == "yahoo" and pos["Beispiel AG"]["symbol"] == "BSP.DE"
     assert pos["Beispiel AG"]["fallback_url"] == "https://example.com/bsp"
     assert pos["Welt ETF"]["kind"] == "etf" and pos["Welt ETF"]["symbol"] == "WELT.AS"
-    assert pos["Nischen ETF"]["source"] == "web" and pos["Nischen ETF"]["xpath"] == "//div[@class='kurs']/text()"
-    assert pos["Nischen ETF"]["kind"] == "etf"
+    niche = pos["Nischen ETF"]
+    assert niche["source"] == "tradegate" and niche["isin"] == "IE00B5L8K969"
+    assert niche["fallback_url"] == "https://example.com/etf/nischen-etf-ie00b5l8k969"
+    assert niche["fallback_xpath"] == "//div[@class='kurs']/text()"
+    assert niche["kind"] == "etf"
     assert pos["US Tech"]["symbol"] == "TECH" and pos["US Tech"]["kind"] == "aktie"
+    assert pos["Beispiel AG"]["isin"] == ""
     assert pos["Alte Aktie"]["shares"] == 0
     gold = pos["Gold"]
     assert gold["kind"] == "gold" and gold["shares"] == 20
-    assert gold["source"] == "web" and gold["url"] == "https://example.com/gold"
+    assert gold["source"] == "tradegate" and gold["isin"] == "DE000A0S9GB0"
+    assert gold["fallback_url"] == "https://example.com/gold"
     assert gold["factor"] == pytest.approx(1 / 31.1035)
     assert gold["cost"] == pytest.approx(1000 / 20)
 

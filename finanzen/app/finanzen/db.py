@@ -9,7 +9,7 @@ import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS settings (
@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS positions (
     shares REAL NOT NULL DEFAULT 0,
     cost REAL NOT NULL DEFAULT 0,
     source TEXT NOT NULL DEFAULT 'yahoo',
+    isin TEXT NOT NULL DEFAULT '',
     symbol TEXT NOT NULL DEFAULT '',
     url TEXT NOT NULL DEFAULT '',
     xpath TEXT NOT NULL DEFAULT '',
@@ -164,9 +165,15 @@ class Database:
         self.conn.execute("PRAGMA foreign_keys = OFF")
         self.conn.execute("PRAGMA journal_mode = DELETE")
         self.conn.executescript(SCHEMA)
-        if self.get_setting("schema_version") is None:
-            self.set_setting("schema_version", SCHEMA_VERSION)
+        self._migrate()
         self._pending: list[dict] | None = None
+
+    def _migrate(self) -> None:
+        """Add columns of newer versions to an existing database."""
+        columns = {row["name"] for row in self.q("PRAGMA table_info(positions)")}
+        if "isin" not in columns:
+            self.conn.execute("ALTER TABLE positions ADD COLUMN isin TEXT NOT NULL DEFAULT ''")
+        self.set_setting("schema_version", SCHEMA_VERSION)
 
     # ------------------------------------------------------------------ basics
     def q(self, sql: str, params=()) -> list[dict]:

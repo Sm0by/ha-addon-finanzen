@@ -92,7 +92,8 @@ def build() -> tuple[bytes, bytes]:
                                          'WENN(googleAbsent; IMPORTXML("https://example.com/bsp"; '
                                          '"/html/body/main/span[1]"); GOOGLEFINANCE("ETR:BSP")))'),
         ("Welt ETF", 100.0, 5, 90.0, 'GOOGLEFINANCE("AMS:WELT")'),
-        ("Nischen ETF", 20.0, 3, 25.0, 'IMPORTXML("https://example.com/etf"; "//div[@class=\'kurs\']/text()")'),
+        ("Nischen ETF", 20.0, 3, 25.0, 'IMPORTXML("https://example.com/etf/nischen-etf-ie00b5l8k969"; '
+                                        '"//div[@class=\'kurs\']/text()")'),
         ("US Tech", 150.0, 1, 100.0, 'GOOGLEFINANCE("TECH") * GOOGLEFINANCE("CURRENCY:USDEUR")'),
         ("Alte Aktie", 10.0, 0, 8.0, 'GOOGLEFINANCE("FRA:ALT")'),
     ]

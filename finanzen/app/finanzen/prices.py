@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import datetime as dt
+import json
 import logging
+import re
 
 import aiohttp
 from lxml import html as lxml_html
@@ -19,11 +21,64 @@ USER_AGENT = (
     "Chrome/131.0 Safari/537.36"
 )
 YAHOO_URL = "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
+TRADEGATE_URL = "https://www.tradegate.de/refresh.php"
+ONVISTA_SEARCH = "https://api.onvista.de/api/v1/instruments/search/facet"
 TIMEOUT = aiohttp.ClientTimeout(total=20)
+ISIN_RE = re.compile(r"^[A-Z]{2}[A-Z0-9]{9}\d$")
 
 
 class PriceError(Exception):
     pass
+
+
+def parse_tradegate(data: dict) -> dict:
+    """Price from Tradegate's refresh.php answer: last trade, else middle of bid and ask, else last close."""
+    last = parse_number(data.get("last"))
+    bid = parse_number(data.get("bid"))
+    ask = parse_number(data.get("ask"))
+    close = parse_number(data.get("close"))
+    price = last
+    if price is None and bid and ask:
+        price = (bid + ask) / 2
+    if price is None:
+        price = bid or ask or close
+    if not price:
+        raise PriceError("Tradegate liefert für diese ISIN keinen Kurs")
+    return {"price": price, "prev_close": close or None, "currency": "EUR"}
+
+
+async def tradegate_quote(session: aiohttp.ClientSession, isin: str) -> dict:
+    isin = isin.strip().upper()
+    if not ISIN_RE.match(isin):
+        raise PriceError(f"„{isin}“ ist keine gültige ISIN")
+    async with session.get(TRADEGATE_URL, params={"isin": isin}, headers={"User-Agent": USER_AGENT},
+                           timeout=TIMEOUT) as resp:
+        if resp.status != 200:
+            raise PriceError(f"Tradegate antwortet mit HTTP {resp.status}")
+        text = await resp.text(errors="replace")
+    try:
+        data = json.loads(text)
+    except ValueError as err:
+        raise PriceError(f"Tradegate kennt die ISIN {isin} nicht") from err
+    if not isinstance(data, dict):
+        raise PriceError(f"Tradegate kennt die ISIN {isin} nicht")
+    return parse_tradegate(data)
+
+
+async def search_instruments(session: aiohttp.ClientSession, query: str) -> list[dict]:
+    """Find ISINs by name, ticker or ISIN (onvista search)."""
+    async with session.get(ONVISTA_SEARCH, params={"searchValue": query}, headers={"User-Agent": USER_AGENT},
+                           timeout=TIMEOUT) as resp:
+        if resp.status != 200:
+            raise PriceError(f"Suche antwortet mit HTTP {resp.status}")
+        data = await resp.json(content_type=None)
+    results = []
+    for facet in data.get("facets") or []:
+        for item in facet.get("results") or []:
+            if item.get("isin"):
+                results.append({"name": item.get("name", ""), "isin": item["isin"],
+                                "type": facet.get("label") or facet.get("type", ""), "symbol": item.get("symbol", "")})
+    return results[:12]
 
 
 async def yahoo_quote(session: aiohttp.ClientSession, symbol: str) -> dict:
@@ -32,6 +87,8 @@ async def yahoo_quote(session: aiohttp.ClientSession, symbol: str) -> dict:
     async with session.get(url, params=params, headers={"User-Agent": USER_AGENT}, timeout=TIMEOUT) as resp:
         if resp.status == 404:
             raise PriceError(f"Symbol {symbol} bei Yahoo unbekannt")
+        if resp.status == 429:
+            raise PriceError("Yahoo blockiert den Abruf (HTTP 429), Quelle auf Tradegate mit ISIN umstellen")
         if resp.status != 200:
             raise PriceError(f"Yahoo antwortet mit HTTP {resp.status}")
         data = await resp.json(content_type=None)
@@ -83,20 +140,32 @@ async def web_price(session: aiohttp.ClientSession, url: str, xpath: str) -> flo
 
 
 async def quote_position(session: aiohttp.ClientSession, pos: dict, fx_cache: dict) -> dict:
-    """Fetch the current price of one position in EUR. Tries the fallback page if the main source fails."""
+    """Fetch the current price of one position in EUR.
+
+    Order: the chosen source, then Tradegate if an ISIN is known, then the fallback page.
+    The factor (e.g. ounce to gram) applies to Yahoo and web pages, Tradegate quotes are used as they are.
+    """
     factor = pos.get("factor") or 1.0
+    isin = (pos.get("isin") or "").strip()
     errors = []
     attempts = []
-    if pos["source"] == "yahoo" and pos.get("symbol"):
+    if pos["source"] == "tradegate" and isin:
+        attempts.append(("tradegate", isin, ""))
+    elif pos["source"] == "yahoo" and pos.get("symbol"):
         attempts.append(("yahoo", pos["symbol"], ""))
     elif pos["source"] == "web" and pos.get("url"):
         attempts.append(("web", pos["url"], pos.get("xpath", "")))
+    if isin and pos["source"] != "tradegate":
+        attempts.append(("tradegate", isin, ""))
     if pos.get("fallback_url") and pos.get("fallback_xpath"):
         attempts.append(("web", pos["fallback_url"], pos["fallback_xpath"]))
     if not attempts:
         raise PriceError("Keine Kursquelle eingetragen")
     for kind, target, xpath in attempts:
         try:
+            if kind == "tradegate":
+                quote = await tradegate_quote(session, target)
+                return dict(quote, via="Tradegate")
             if kind == "yahoo":
                 quote = await yahoo_quote(session, target)
                 rate = await fx_to_eur(session, quote["currency"], fx_cache)
@@ -110,13 +179,17 @@ async def quote_position(session: aiohttp.ClientSession, pos: dict, fx_cache: di
     raise PriceError("; ".join(errors))
 
 
+def _source_of(via: str) -> str:
+    return {"Tradegate": "tradegate", "Webseite": "web"}.get(via, "yahoo")
+
+
 def _apply_quote(db: Database, pos: dict, quote: dict, today: str) -> None:
     data = {
         "price": quote["price"],
         "currency": quote["currency"],
         "price_at": now_iso(),
         "price_day": today,
-        "status": "ok" if quote["via"] != "Webseite" or pos["source"] == "web" else "ok (Ersatzquelle)",
+        "status": "ok" if _source_of(quote["via"]) == pos["source"] else f"ok über {quote['via'].split(' ')[0]}",
         "error_since": None,
     }
     prev = quote["prev_close"]
@@ -171,4 +244,6 @@ async def refresh(db: Database, session: aiohttp.ClientSession, ids: list[int] |
         else:
             _apply_error(db, pos, error or "unbekannter Fehler")
             failed.append((pos["name"], error))
+            _LOGGER.warning("Kein Kurs für %s: %s", pos["name"], error)
+    _LOGGER.info("Kurse abgerufen: %s von %s", ok, len(positions))
     return {"ok": ok, "total": len(positions), "failed": failed}

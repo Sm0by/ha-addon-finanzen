@@ -151,5 +151,9 @@ svg.chart line.grid { stroke: var(--line); }
 @media (max-width: 640px) {
   main { padding: 12px; }
   .grid2 { grid-template-columns: 1fr; }
-  .top { padding: 0 12px; }
+  .top { padding: 0 12px; position: static; gap: 0; }
+  .brand { padding: 10px 0 2px; width: 100%; }
+  .tabs { flex-wrap: nowrap; overflow-x: auto; width: 100%; scrollbar-width: none; }
+  .tab { height: 44px; padding: 0 10px; white-space: nowrap; }
+  .status { margin-left: 0; padding: 6px 0 8px; }
 }

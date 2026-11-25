@@ -11,7 +11,7 @@ from openpyxl import load_workbook
 
 from .calc import month_label
 from .db import Database, now_iso
-from .util import due_from_note, month_key, parse_number, to_date
+from .util import due_from_note, isin_valid, month_key, parse_number, to_date
 
 EXCHANGES = {
     "ETR": ".DE", "FRA": ".F", "AMS": ".AS", "VIE": ".VI", "SWX": ".SW", "EPA": ".PA", "LON": ".L",
@@ -19,6 +19,9 @@ EXCHANGES = {
     "CVE": ".V", "NASDAQ": "", "NYSE": "", "NYSEARCA": "", "NYSEAMERICAN": "", "BATS": "", "OTCMKTS": "",
 }
 OUNCE_GRAMS = 31.1035
+# Xetra-Gold: one unit is backed by one gram of gold, traded in EUR on Tradegate
+GOLD_PER_GRAM_ISIN = "DE000A0S9GB0"
+ISIN_IN_URL = re.compile(r"(?<![A-Za-z0-9])([A-Za-z]{2}[A-Za-z0-9]{9}\d)(?![A-Za-z0-9])")
 
 
 class ImportError_(Exception):
@@ -40,7 +43,7 @@ def googlefinance_to_yahoo(ticker: str) -> str:
 
 def parse_price_formula(formula) -> dict:
     """Read the price sources out of a GOOGLEFINANCE / IMPORTXML formula."""
-    result = {"source": "manual", "symbol": "", "url": "", "xpath": "", "factor": 1.0,
+    result = {"source": "manual", "isin": "", "symbol": "", "url": "", "xpath": "", "factor": 1.0,
               "fallback_url": "", "fallback_xpath": ""}
     if not isinstance(formula, str) or not formula.startswith("="):
         return result
@@ -61,7 +64,49 @@ def parse_price_formula(formula) -> dict:
         result.update(source="web", url=pages[0][0], xpath=pages[0][1])
         if len(pages) > 1:
             result.update(fallback_url=pages[1][0], fallback_xpath=pages[1][1])
+    # An ISIN in one of the page addresses (e.g. ".../ishares-...-etf-ie00b5l8k969"): use Tradegate,
+    # which answers reliably, and keep the page as fallback
+    for url, _xpath in pages:
+        found = [m.upper() for m in ISIN_IN_URL.findall(url) if isin_valid(m)]
+        if found:
+            result["isin"] = found[0]
+            if result["source"] == "web":
+                result.update(fallback_url=result["url"], fallback_xpath=result["xpath"], url="", xpath="")
+            result["source"] = "tradegate"
+            break
     return result
+
+
+def upgrade_sources(db: Database) -> list[str]:
+    """One-time switch of data imported by 1.0.0 to Tradegate: ISIN from the page address, Xetra-Gold for gold.
+
+    Recorded as one change, so it can be undone in the change history.
+    """
+    if db.get_setting("sources_upgraded"):
+        return []
+    changed = []
+    positions = db.q("SELECT * FROM positions WHERE isin = '' AND source != 'manual'")
+    with db.change("Kursquellen auf Tradegate umgestellt (Update 1.1.0)"):
+        for pos in positions:
+            isin = ""
+            for url in (pos["url"], pos["fallback_url"]):
+                found = [m.upper() for m in ISIN_IN_URL.findall(url or "") if isin_valid(m)]
+                if found:
+                    isin = found[0]
+                    break
+            if not isin and pos["kind"] == "gold":
+                isin = GOLD_PER_GRAM_ISIN
+            if not isin:
+                continue
+            data = {"isin": isin, "source": "tradegate", "status": "umgestellt auf Tradegate", "error_since": None}
+            if pos["source"] == "web" and pos["url"] and not pos["fallback_url"]:
+                data.update(fallback_url=pos["url"], fallback_xpath=pos["xpath"])
+            db.update("positions", {"id": pos["id"]}, data)
+            changed.append(pos["name"])
+    db.set_setting("sources_upgraded", True)
+    if changed:
+        db.log("Kursquellen auf Tradegate umgestellt: " + ", ".join(changed))
+    return changed
 
 
 def _interval(value) -> str:
@@ -276,6 +321,12 @@ def import_workbook(db: Database, data: bytes, today: dt.date | None = None,
                 invested_gold = db.scalar("SELECT COALESCE(SUM(gold), 0) FROM deposits") or 0.0
                 gold_price = parse_number(_cell(ws, 2, col_gold_price)) if col_gold_price else None
                 source = parse_price_formula(_cell(wf, 2, col_gold_price)) if col_gold_price else {}
+                if not source.get("isin"):
+                    # Price per gram from Xetra-Gold on Tradegate; the sheet's page stays as fallback
+                    source = dict(source)
+                    if source.get("source") == "web":
+                        source.update(fallback_url=source["url"], fallback_xpath=source["xpath"], url="", xpath="")
+                    source.update(source="tradegate", isin=GOLD_PER_GRAM_ISIN)
                 if grams:
                     db.insert("positions", dict(
                         source, name="Gold", kind="gold", shares=grams,
@@ -373,5 +424,6 @@ def import_workbook(db: Database, data: bytes, today: dt.date | None = None,
 
         summary = ", ".join(f"{count} {name}" for name, count in report.items())
         db.set_setting("last_import", {"at": now_iso(), "summary": summary, "notes": notes})
+        db.set_setting("sources_upgraded", True)
         db.log(f"Import aus Google Sheet: {summary}")
     return {"summary": summary, "counts": dict(report), "notes": notes}

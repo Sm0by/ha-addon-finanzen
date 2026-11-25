@@ -12,6 +12,7 @@ import aiohttp
 from . import __version__, calc, prices
 from .db import Database
 from .ha import ACTION_PREFIX, HomeAssistant
+from .importer import upgrade_sources
 from .mqttpub import MqttPublisher, sensor_values
 from .util import due_day, month_key
 
@@ -36,6 +37,12 @@ class FinanzenApp:
 
     # --------------------------------------------------------------- lifecycle
     async def start(self) -> None:
+        if self.db.scalar("SELECT COUNT(*) FROM positions"):
+            upgraded = upgrade_sources(self.db)
+            if upgraded:
+                _LOGGER.info("Kursquellen auf Tradegate umgestellt: %s", ", ".join(upgraded))
+        else:
+            self.db.set_setting("sources_upgraded", True)
         self.session = aiohttp.ClientSession()
         self.ha = HomeAssistant(self.session, token=None if not self.dev else "")
         if self.ha.available:

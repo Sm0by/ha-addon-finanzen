@@ -49,6 +49,23 @@ def parse_number(value) -> float | None:
     return -number if negative else number
 
 
+def isin_valid(isin: str) -> bool:
+    """Check format and check digit (Luhn over the letters converted to numbers)."""
+    isin = (isin or "").strip().upper()
+    if not re.fullmatch(r"[A-Z]{2}[A-Z0-9]{9}\d", isin):
+        return False
+    digits = "".join(str(int(ch, 36)) for ch in isin)
+    total = 0
+    for index, ch in enumerate(reversed(digits)):
+        n = int(ch)
+        if index % 2 == 1:
+            n *= 2
+            if n > 9:
+                n -= 9
+        total += n
+    return total % 10 == 0
+
+
 def month_key(day: dt.date) -> str:
     return f"{day.year:04d}-{day.month:02d}"
 

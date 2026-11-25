@@ -11,6 +11,7 @@
     trade: { kind: "kauf", position_id: "", date: today(), amount: "", price: "", shares: "", credit: "" },
     dividend: { position: "", date: today(), amount: "" },
     services: null,
+    search: null,
     busy: false,
   };
   if (!VIEWS.includes(ui.view)) ui.view = "uebersicht";
@@ -279,7 +280,7 @@
     const body = rows.map((p) => {
       const unit = p.kind === "gold" ? "g" : "";
       const typeColor = p.kind === "gold" ? "var(--gold)" : p.kind === "etf" ? "var(--etf)" : p.kind === "crypto" ? "var(--bad)" : "var(--stock)";
-      const src = p.source === "yahoo" ? `Yahoo · ${esc(p.symbol)}` : p.source === "web" ? "Webseite" : "von Hand";
+      const src = p.source === "tradegate" ? `Tradegate · ${esc(p.isin)}` : p.source === "yahoo" ? `Yahoo · ${esc(p.symbol)}` : p.source === "web" ? "Webseite" : "von Hand";
       return `<tr>
         <td><div class="pname"><span class="dot" style="background:${typeColor}"></span>${esc(p.name)}</div><div class="psub">${src}${p.status && p.status.startsWith("Fehler") ? ' · <span class="warn">Kursfehler</span>' : ""}</div></td>
         <td class="num">${eur(p.price)}</td>
@@ -474,17 +475,22 @@
     const s = d.settings;
     const sources = d.sources.map((p) => {
       const isWeb = p.source === "web";
-      const status = p.status === "ok" || p.status === "ok (Ersatzquelle)" ? `<span class="good">${esc(p.status)} · ${esc(when(p.price_at))}</span>` : p.status.startsWith("Fehler") ? `<span class="warn">${esc(p.status)}</span>` : `<span class="muted">${esc(p.status || "–")}</span>`;
+      const status = p.status.startsWith("ok") ? `<span class="good">${esc(p.status)} · ${esc(when(p.price_at))}</span>` : p.status.startsWith("Fehler") ? `<span class="warn">${esc(p.status)}</span>` : `<span class="muted">${esc(p.status || "–")}</span>`;
+      const srcOpt = (value, label) => `<option value="${value}" ${p.source === value ? "selected" : ""}>${label}</option>`;
+      let target;
+      if (p.source === "manual") target = `<input class="cell num" data-edit="manualprice:${p.id}:price" data-key="s${p.id}p" value="${plain(p.price, 4)}" placeholder="Kurs" aria-label="Kurs von Hand">`;
+      else if (p.source === "tradegate") target = `<input class="cell mono" data-edit="positions:${p.id}:isin" data-key="s${p.id}i" value="${esc(p.isin)}" placeholder="ISIN, z. B. DE0007164600" aria-label="ISIN ${esc(p.name)}">`;
+      else target = `<input class="cell mono" data-edit="positions:${p.id}:${isWeb ? "url" : "symbol"}" data-key="s${p.id}a" value="${esc(isWeb ? p.url : p.symbol)}" placeholder="${isWeb ? "https://…" : "z. B. SAP.DE"}" aria-label="${isWeb ? "Adresse" : "Symbol"} ${esc(p.name)}">`;
       return `<tr>
         <td><input class="cell" data-edit="positions:${p.id}:name" data-key="s${p.id}n" value="${esc(p.name)}" aria-label="Name"><select class="cell" data-edit="positions:${p.id}:kind" data-key="s${p.id}k" aria-label="Art" style="font-size:12px;min-height:32px">${["aktie", "etf", "crypto", "gold"].map((k) => `<option value="${k}" ${p.kind === k ? "selected" : ""}>${{ aktie: "Aktie", etf: "ETF", crypto: "Krypto", gold: "Gold" }[k]}</option>`).join("")}</select></td>
-        <td><select class="cell" data-edit="positions:${p.id}:source" data-key="s${p.id}q" aria-label="Quelle ${esc(p.name)}"><option value="yahoo" ${p.source === "yahoo" ? "selected" : ""}>Yahoo</option><option value="web" ${isWeb ? "selected" : ""}>Webseite</option><option value="manual" ${p.source === "manual" ? "selected" : ""}>von Hand</option></select></td>
-        <td>${p.source === "manual" ? `<input class="cell num" data-edit="manualprice:${p.id}:price" data-key="s${p.id}p" value="${plain(p.price, 4)}" placeholder="Kurs" aria-label="Kurs von Hand">` : `<input class="cell mono" data-edit="positions:${p.id}:${isWeb ? "url" : "symbol"}" data-key="s${p.id}a" value="${esc(isWeb ? p.url : p.symbol)}" placeholder="${isWeb ? "https://…" : "z. B. SAP.DE"}" aria-label="${isWeb ? "Adresse" : "Symbol"} ${esc(p.name)}">`}</td>
+        <td><select class="cell" data-edit="positions:${p.id}:source" data-key="s${p.id}q" aria-label="Quelle ${esc(p.name)}">${srcOpt("tradegate", "Tradegate (ISIN)")}${srcOpt("yahoo", "Yahoo")}${srcOpt("web", "Webseite")}${srcOpt("manual", "von Hand")}</select>${p.source !== "tradegate" && p.isin ? `<div class="faint" style="font-size:11.5px;padding-left:9px">ISIN ${esc(p.isin)} als Ersatz</div>` : ""}</td>
+        <td>${target}</td>
         <td>${isWeb ? `<input class="cell mono" data-edit="positions:${p.id}:xpath" data-key="s${p.id}x" value="${esc(p.xpath)}" placeholder="/html/body/…" aria-label="Auswahlpfad ${esc(p.name)}">` : '<span class="faint">–</span>'}</td>
         <td><input class="cell mono" data-edit="positions:${p.id}:fallback_url" data-key="s${p.id}fu" value="${esc(p.fallback_url)}" placeholder="optional" aria-label="Ersatz-Adresse"><input class="cell mono" data-edit="positions:${p.id}:fallback_xpath" data-key="s${p.id}fx" value="${esc(p.fallback_xpath)}" placeholder="Ersatz-Pfad" aria-label="Ersatz-Auswahlpfad"></td>
         <td><input class="cell num" data-edit="positions:${p.id}:factor" data-key="s${p.id}f" value="${plain(p.factor, 8)}" aria-label="Faktor ${esc(p.name)}" style="width:96px"></td>
         <td class="num">${eur(p.price)}</td>
         <td style="font-size:12.5px;max-width:240px">${status}</td>
-        <td style="white-space:nowrap"><button type="button" class="ghost" data-action="test" data-id="${p.id}">Testen</button><button type="button" class="icon" data-action="del-position" data-id="${p.id}" aria-label="${esc(p.name)} löschen">${X_ICON}</button></td>
+        <td style="white-space:nowrap"><button type="button" class="ghost" data-action="search-open" data-id="${p.id}">ISIN suchen</button> <button type="button" class="ghost" data-action="test" data-id="${p.id}">Testen</button><button type="button" class="icon" data-action="del-position" data-id="${p.id}" aria-label="${esc(p.name)} löschen">${X_ICON}</button></td>
       </tr>`;
     }).join("");
     const jobLabels = {
@@ -507,8 +513,9 @@
     return `
       <section class="card">
         <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap"><h2>Kursquellen</h2><button type="button" class="btn" data-action="refresh">Alle Kurse jetzt abrufen</button></div>
-        <p class="sub">Yahoo für alles, was Yahoo führt · sonst eine Webseite mit Auswahlpfad (XPath) wie bei IMPORTXML · Faktor z. B. 0,0321507 für Unze in Gramm</p>
-        <div class="table-wrap"><table class="t" style="min-width:1180px">
+        <p class="sub">Am zuverlässigsten: Tradegate mit ISIN (Kurse in Euro). Yahoo blockiert Abrufe oft, Webseiten ändern ihren Aufbau · Ist eine ISIN eingetragen, springt Tradegate auch bei anderen Quellen ein · Faktor (z. B. 0,0321507 für Unze in Gramm) gilt für Yahoo und Webseiten</p>
+        ${searchPanel(d)}
+        <div class="table-wrap"><table class="t" style="min-width:1260px">
           <thead><tr><th>Position · Art</th><th>Quelle</th><th>Symbol oder Adresse</th><th>Auswahlpfad</th><th>Ersatzquelle</th><th>Faktor</th><th class="num">Kurs</th><th>Status</th><th></th></tr></thead>
           <tbody>${sources}</tbody>
         </table></div>
@@ -550,6 +557,36 @@
           <div class="line"><span>Kursintervall</span><span>${d.meta.interval} Minuten</span></div>
         </section>
       </div>`;
+  }
+
+  function searchPanel(d) {
+    const s = ui.search;
+    if (!s) return "";
+    const pos = d.sources.find((p) => p.id === s.id);
+    if (!pos) return "";
+    const results = s.loading ? '<p class="muted">Suche läuft …</p>'
+      : s.results === null ? ""
+        : s.results.length ? s.results.map((r) => `<div class="line"><span>${esc(r.name)}<span class="faint" style="display:block;font-size:12px">${esc(r.type)} · <span class="mono">${esc(r.isin)}</span>${r.symbol ? " · " + esc(r.symbol) : ""}</span></span><button type="button" class="btn" data-action="search-pick" data-isin="${esc(r.isin)}">Übernehmen</button></div>`).join("")
+          : '<p class="muted">Nichts gefunden. Anderen Namen oder die ISIN versuchen.</p>';
+    return `<div class="card" style="background:var(--card2);margin:0 0 14px">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap"><h2>ISIN für „${esc(pos.name)}“ suchen</h2><button type="button" class="icon" data-action="search-close" aria-label="Suche schließen">${X_ICON}</button></div>
+      <form data-form="search" class="actions" style="margin-top:6px"><input class="in" name="q" value="${esc(s.query)}" style="flex:1 1 220px;width:auto" aria-label="Suchbegriff"><button type="submit" class="ghost">Suchen</button></form>
+      <div style="margin-top:8px">${results}</div>
+      <p class="faint" style="font-size:12px;margin:8px 0 0">„Übernehmen“ stellt die Quelle auf Tradegate um und ruft den Kurs gleich ab. Suche über onvista.</p>
+    </div>`;
+  }
+
+  async function runSearch() {
+    ui.search.loading = true;
+    render();
+    try {
+      const res = await api("GET", `api/search?q=${encodeURIComponent(ui.search.query)}`);
+      ui.search.results = res.results;
+    } catch (e) {
+      ui.search.results = [];
+    }
+    ui.search.loading = false;
+    render();
   }
 
   const VIEW_RENDER = { uebersicht: viewUebersicht, depot: viewDepot, fixkosten: viewFixkosten, monat: viewMonat, einstellungen: viewEinstellungen };
@@ -610,6 +647,24 @@
         if (window.confirm("Alle Daten auf den Stand vor dem letzten Import zurücksetzen?")) await act("POST", "api/import/undo");
         break;
       case "notify-test": await act("POST", "api/notify/test"); break;
+      case "search-open": {
+        const pos = ui.data.sources.find((p) => String(p.id) === id);
+        if (!pos) break;
+        ui.search = { id: pos.id, query: pos.name.replace(/\(.*?\)/g, "").replace(/\bVz\.?$/i, "").trim(), results: null, loading: false };
+        window.scrollTo(0, 0);
+        await runSearch();
+        break;
+      }
+      case "search-close": ui.search = null; render(); break;
+      case "search-pick": {
+        const pid = ui.search.id;
+        const res = await act("PATCH", `api/positions/${pid}`, { source: "tradegate", isin: el.dataset.isin });
+        if (res) {
+          ui.search = null;
+          await act("POST", `api/positions/${pid}/test`);
+        }
+        break;
+      }
       default: break;
     }
   });
@@ -667,6 +722,9 @@
     } else if (kind === "payment") {
       const data = new FormData(form);
       await act("POST", "api/payments", { name: data.get("name"), amount: data.get("amount"), month: ui.data.month.key });
+    } else if (kind === "search") {
+      ui.search.query = new FormData(form).get("q") || "";
+      await runSearch();
     } else if (kind === "account") {
       const data = new FormData(form);
       await act("POST", "api/accounts", { name: data.get("name") });
