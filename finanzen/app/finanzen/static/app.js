@@ -59,6 +59,50 @@
     const n = Number(s);
     return Number.isFinite(n) ? n : null;
   }
+  // Small calculator for amount fields: "50,00 + 25" -> 75, also - * / and brackets. No eval.
+  function calcAmount(text) {
+    const src = String(text ?? "").replace(/€/g, "").replace(/[−–]/g, "-").replace(/[×x]/gi, "*").replace(/[÷:]/g, "/").trim();
+    if (!src) return null;
+    const tokens = src.match(/\d[\d.,]*|[-+*/()]|\S/g) || [];
+    let i = 0;
+    const fail = () => { throw new Error(`„${text}“ lässt sich nicht ausrechnen`); };
+    function factor() {
+      const t = tokens[i++];
+      if (t === "-") return -factor();
+      if (t === "+") return factor();
+      if (t === "(") {
+        const v = sum();
+        if (tokens[i++] !== ")") fail();
+        return v;
+      }
+      if (t === undefined || !/^\d/.test(t)) fail();
+      const n = parseNum(t);
+      if (n === null) fail();
+      return n;
+    }
+    function product() {
+      let v = factor();
+      while (tokens[i] === "*" || tokens[i] === "/") {
+        const op = tokens[i++];
+        const r = factor();
+        if (op === "/" && r === 0) fail();
+        v = op === "*" ? v * r : v / r;
+      }
+      return v;
+    }
+    function sum() {
+      let v = product();
+      while (tokens[i] === "+" || tokens[i] === "-") {
+        const op = tokens[i++];
+        const r = product();
+        v = op === "+" ? v + r : v - r;
+      }
+      return v;
+    }
+    const value = sum();
+    if (i !== tokens.length || !Number.isFinite(value)) fail();
+    return Math.round(value * 100) / 100;
+  }
   function readStored(key, fallback) {
     try { return localStorage.getItem("finanzen." + key) || fallback; } catch (e) { return fallback; }
   }
@@ -518,7 +562,7 @@
     const cats = m.categories.map((c, i) => `<div style="display:flex;align-items:center;gap:10px;padding:4px 0">
       <span class="dot" style="background:${COLORS[i % COLORS.length]}"></span>
       <label for="cat${c.id}" style="flex:1">${esc(c.name)}<span class="faint" style="display:block;font-size:12px">Ø ${eur(c.avg)}</span></label>
-      <input class="in num" id="cat${c.id}" style="width:130px;text-align:right" data-edit="spending:${c.id}:amount" data-key="cat${c.id}" value="${c.amount === null || c.amount === undefined ? "" : money(c.amount)}" inputmode="decimal" placeholder="0,00">
+      <input class="in num" id="cat${c.id}" style="width:130px;text-align:right" data-edit="spending:${c.id}:amount" data-key="cat${c.id}" value="${c.amount === null || c.amount === undefined ? "" : money(c.amount)}" autocomplete="off" enterkeyhint="done" placeholder="0,00">
     </div>`).join("") || '<p class="muted">Keine Kategorien. Sie kommen mit dem Import aus „DaylisAVG“.</p>';
     const ratio = m.expected ? Math.min(100, (m.spent / m.expected) * 100) : 0;
     const over = m.spent > m.expected;
@@ -537,7 +581,7 @@
           <form data-form="payment" class="actions"><input class="in" name="name" placeholder="Weitere Zahlung" style="flex:1 1 160px;width:auto" aria-label="Name der Zahlung"><input class="in num" name="amount" placeholder="Betrag" style="width:110px" inputmode="decimal" aria-label="Betrag"><button type="submit" class="ghost">Hinzufügen</button></form>
         </section>
         <section class="card">
-          <h2>Alltagsausgaben</h2><p class="sub">Ersetzt die Monatszeile in „DaylisAVG“</p>
+          <h2>Alltagsausgaben</h2><p class="sub">Im Feld lässt sich rechnen: „50,00 + 25“ wird zu 75,00</p>
           ${cats}
           <div class="line" style="font-weight:500;border-top:1px solid var(--line2);margin-top:6px"><span>Summe</span><span class="num">${eur(m.spent)}</span></div>
           <div class="faint" style="font-size:12.5px;margin:4px 0 8px">erwartet ${eur(m.expected)} · ${over ? `<span class="bad">${eur(m.spent - m.expected)} darüber</span>` : `noch ${eur(m.expected - m.spent)} Luft`}</div>
@@ -792,7 +836,18 @@
       case "fixed": await act("PATCH", `api/fixed/${id}`, { [field]: value }); break;
       case "payments": await act("PATCH", `api/payments/${id}`, { paid: value }); break;
       case "accounts": await act("PATCH", `api/accounts/${id}`, { [field]: value }); break;
-      case "spending": await act("PUT", "api/spending", { month: ui.data.month.key, category_id: Number(id), amount: value }); break;
+      case "spending": {
+        let amount;
+        try {
+          amount = calcAmount(value);
+        } catch (err) {
+          toast(err.message, true);
+          render();
+          break;
+        }
+        await act("PUT", "api/spending", { month: ui.data.month.key, category_id: Number(id), amount });
+        break;
+      }
       case "settings": await act("PATCH", "api/settings", { [field]: value }); break;
       case "jobs": await act("PATCH", "api/settings", { jobs: { [id]: value } }); break;
       case "notify": await act("PATCH", "api/settings", { notify: { [id]: value } }); break;

@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.2.3
+
+- Monat: In den Feldern der Alltagsausgaben lässt sich rechnen, „50,00 + 25“ wird zu 75,00 (auch −, *, /
+  und Klammern). Auf dem Handy öffnet sich dafür die normale Tastatur
+
 ## 1.2.2
 
 - Depot: „Wert Depot“ zeigt Gewinn oder Verlust ohne und mit Dividenden
