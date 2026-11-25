@@ -51,6 +51,7 @@ def test_parse_due():
         ("76,83 alle 2 Jahre", "", "76,83 alle 2 Jahre"),
         ("5€ alle 5 Jahre, nächste 2030", "", "5€ alle 5 Jahre, nächste 2030"),
         (None, "", ""),
+        (dt.datetime(2026, 1, 21), "21.01.", ""),
     ],
 )
 def test_due_from_note(note, due, rest):

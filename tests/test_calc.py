@@ -75,7 +75,7 @@ def test_fixed_summary(db):
     assert spend["avg_total"] == pytest.approx(400)
     assert spend["this_total"] == pytest.approx(190)
     fixed = calc.fixed_summary(db, TODAY, sett, spend)
-    monthly = 9.99 + 30 / 12 + 12.5 + 800 + 120 / 12 + 60 + 50 / 12
+    monthly = 9.99 + 30 / 12 + 12.5 + 800 + 120 / 12 + 60 + 50 / 12 + 15 / 12
     assert fixed["fixed"] == pytest.approx(monthly)
     assert fixed["total"] == pytest.approx(monthly + 400)
     assert fixed["rest"] == pytest.approx(2000 - monthly - 400)

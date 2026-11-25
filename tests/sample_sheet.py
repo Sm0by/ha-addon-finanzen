@@ -44,6 +44,7 @@ def build() -> tuple[bytes, bytes]:
         ["Versicherung", 120.0, "Jährlich", None, None, "Bank B", "Immer am 22.11"],
         ["Verein", 60.0, "Monatlich", None, None, "Bank B", None],
         ["Zahnarzt", 50.0, "Jährlich", None, None, "Bank B", "70€ - 20€ Erstattung"],
+        ["Bankkarte", 15.0, "Jährlich", None, None, "Bank B", dt.datetime(2026, 1, 21)],
         ["Hausrat", None, None, None, None, None, None],
     ]
     for ws in (son_v, son_f):
@@ -81,6 +82,7 @@ def build() -> tuple[bytes, bytes]:
         ws.cell(row=3, column=12, value=dt.datetime(2025, 5, 8))
         ws.cell(row=3, column=13, value="Welt ETF")
         ws.cell(row=3, column=14, value=3.0)
+        ws.cell(row=14, column=8, value="Wert ETF's, Aktien, Crypto Aktuell")
         ws.cell(row=42, column=8, value="Wert Gold Aktuell")
         ws.cell(row=43, column=8, value="Wert ETF's Aktuell")
         ws.cell(row=44, column=8, value="Wert Aktien Aktuell")
@@ -110,6 +112,7 @@ def build() -> tuple[bytes, bytes]:
     inv_f["AA2"] = _dummy('=LINKS(IMPORTXML("https://example.com/gold"; "//div[@id=\'gold\']/text()"); 8) / 31,1035',
                           100.0)
     inv_f["AB2"] = "=20"
+    inv_f["I14"] = "=SUMME(U2:U6)"
     inv_f["I42"] = "=AA2*AB2"
     inv_f["I43"] = "=U3+U4"
     inv_f["I44"] = "=SUMME(U2:U2)+U5+U6"

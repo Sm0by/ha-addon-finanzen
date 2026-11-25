@@ -132,6 +132,9 @@ def due_from_note(note: str | None) -> tuple[str, str]:
     """
     if not note:
         return "", ""
+    if isinstance(note, (dt.date, dt.datetime)):
+        # A note like "21.01." becomes a date in the Excel export: yearly on that day
+        return format_due(note.day, None, note.month), ""
     text = str(note).strip()
     match = _NOTE_DUE_RE.search(text)
     if not match or ("," in text[: match.start()] and match.start() > 0 and text[match.start() - 1].isdigit()):

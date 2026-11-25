@@ -285,9 +285,11 @@ def import_workbook(db: Database, data: bytes, today: dt.date | None = None,
                 if not isinstance(label, str):
                     continue
                 low = label.lower()
-                if "aktuell" in low and "etf" in low and "aktien" not in low:
+                # Only the single-type rows, not "Wert ETF's, Aktien, Crypto Aktuell" (sum of everything)
+                mixed = sum(word in low for word in ("etf", "aktien", "crypto", "krypto")) > 1
+                if "aktuell" in low and "etf" in low and not mixed:
                     etf_rows |= _rows_from_formula(_cell(wf, row, 9))
-                if "aktuell" in low and "crypto" in low:
+                if "aktuell" in low and ("crypto" in low or "krypto" in low) and not mixed:
                     crypto_rows |= _rows_from_formula(_cell(wf, row, 9))
 
             col_name = _find(headers, "Aktie, ETF, Coin")

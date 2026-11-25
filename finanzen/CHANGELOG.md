@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.1.1
+
+- Import: Aktien wurden als Krypto eingestuft, weil die Summenzeile „Wert ETF's, Aktien, Crypto Aktuell“ mitgezählt wurde
+- Import: Fälligkeiten wie „21.01.“, die der Excel-Export in ein Datum verwandelt, werden wieder als Fälligkeit erkannt
+
 ## 1.1.0
 
 - Neue Kursquelle Tradegate (nach ISIN, Kurse in Euro). Yahoo und finanzen.net blockieren Abrufe ohne Browser

@@ -35,7 +35,8 @@ def test_formula_with_fallback():
 
 def test_fixed_costs(db):
     rows = {r["name"]: r for r in db.q("SELECT * FROM fixed_costs")}
-    assert len(rows) == 8
+    assert len(rows) == 9
+    assert rows["Bankkarte"]["due"] == "21.01." and rows["Bankkarte"]["note"] == ""
     assert rows["Musikdienst"]["due"] == "05." and rows["Musikdienst"]["interval"] == "monatlich"
     assert rows["Cloudspeicher"]["due"] == "14.03." and rows["Cloudspeicher"]["interval"] == "jaehrlich"
     assert rows["Server"]["due"] == "27.–30."
@@ -57,6 +58,8 @@ def test_positions_and_sources(db):
     assert niche["kind"] == "etf"
     assert pos["US Tech"]["symbol"] == "TECH" and pos["US Tech"]["kind"] == "aktie"
     assert pos["Beispiel AG"]["isin"] == ""
+    # "Wert ETF's, Aktien, Crypto Aktuell" sums everything and must not mark stocks as crypto
+    assert {p["kind"] for p in pos.values()} == {"aktie", "etf", "gold"}
     assert pos["Alte Aktie"]["shares"] == 0
     gold = pos["Gold"]
     assert gold["kind"] == "gold" and gold["shares"] == 20
