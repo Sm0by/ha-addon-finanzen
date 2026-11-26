@@ -76,7 +76,8 @@
         return v;
       }
       if (t === undefined || !/^\d/.test(t)) fail();
-      const n = parseNum(t);
+      // "1.500" means 1500 like on the server (German thousands separator)
+      const n = /^[1-9]\d{0,2}(\.\d{3})+$/.test(t) ? Number(t.replace(/\./g, "")) : parseNum(t);
       if (n === null) fail();
       return n;
     }
@@ -568,7 +569,7 @@
     const over = m.spent > m.expected;
     const accounts = m.accounts.map((a) => `<div style="display:flex;align-items:center;gap:8px;padding:3px 0">
       <input class="cell" style="flex:1" data-edit="accounts:${a.id}:name" data-key="a${a.id}n" value="${esc(a.name)}" aria-label="Name des Kontos">
-      <input class="in num" style="width:130px;text-align:right" data-edit="accounts:${a.id}:balance" data-key="a${a.id}b" value="${money(a.balance)}" aria-label="Stand ${esc(a.name)}" inputmode="decimal">
+      <input class="in num" style="width:130px;text-align:right" data-edit="accounts:${a.id}:balance" data-key="a${a.id}b" value="${money(a.balance)}" aria-label="Stand ${esc(a.name)}" autocomplete="off" enterkeyhint="done">
       <button type="button" class="icon" data-action="del-account" data-id="${a.id}" aria-label="${esc(a.name)} löschen">${X_ICON}</button>
     </div>`).join("");
     return `
@@ -590,7 +591,7 @@
           ${m.history.length ? bars(m.history, m.categories, 110) : '<p class="muted">Noch keine Werte.</p>'}
         </section>
         <section class="card">
-          <h2>Konten und Töpfe</h2><p class="sub">Stand eintippen, wird sofort gespeichert</p>
+          <h2>Konten und Töpfe</h2><p class="sub">Stand eintippen, wird sofort gespeichert. Rechnen geht auch: „1.200 − 45,90“</p>
           ${accounts}
           <div class="line" style="font-weight:500;border-top:1px solid var(--line2);margin-top:6px"><span>Summe</span><span class="num">${eur(m.accounts_total)}</span></div>
           <form data-form="account" class="actions"><input class="in" name="name" placeholder="Neues Konto" style="flex:1;width:auto" aria-label="Name des neuen Kontos"><button type="submit" class="ghost">Anlegen</button></form>
@@ -835,8 +836,12 @@
       case "manualprice": await act("PATCH", `api/positions/${id}`, { price_manual: value }); break;
       case "fixed": await act("PATCH", `api/fixed/${id}`, { [field]: value }); break;
       case "payments": await act("PATCH", `api/payments/${id}`, { paid: value }); break;
-      case "accounts": await act("PATCH", `api/accounts/${id}`, { [field]: value }); break;
+      case "accounts":
       case "spending": {
+        if (kind === "accounts" && field !== "balance") {
+          await act("PATCH", `api/accounts/${id}`, { [field]: value });
+          break;
+        }
         let amount;
         try {
           amount = calcAmount(value);
@@ -845,7 +850,12 @@
           render();
           break;
         }
-        await act("PUT", "api/spending", { month: ui.data.month.key, category_id: Number(id), amount });
+        if (kind === "accounts") {
+          if (amount === null) { render(); break; }
+          await act("PATCH", `api/accounts/${id}`, { balance: amount });
+        } else {
+          await act("PUT", "api/spending", { month: ui.data.month.key, category_id: Number(id), amount });
+        }
         break;
       }
       case "settings": await act("PATCH", "api/settings", { [field]: value }); break;
@@ -909,6 +919,71 @@
       button.textContent = "Importieren";
     }
   });
+
+  // -------------------------------------------------------- phone keyboard
+  // In the HA app the Ingress iframe often keeps its full height while the
+  // on-screen keyboard covers its lower part, so the browser does not move the
+  // field. Measure the really visible area (also through the HA page around
+  // us, same origin) and scroll the focused field above the keyboard.
+  const NO_KEYBOARD = ["checkbox", "radio", "file", "button", "submit", "range", "color"];
+  const typing = (el) => !!el && ((el.tagName === "INPUT" && !NO_KEYBOARD.includes(el.type)) || el.tagName === "TEXTAREA");
+  const touch = window.matchMedia ? window.matchMedia("(pointer: coarse)") : { matches: false };
+  function visibleArea() {
+    let top = 0;
+    let bottom = window.innerHeight;
+    let shift = 0; // top of our viewport in the coordinates of the window looked at
+    let win = window;
+    try {
+      for (let depth = 0; depth < 5; depth += 1) {
+        const vv = win.visualViewport;
+        if (vv) {
+          top = Math.max(top, vv.offsetTop - shift);
+          bottom = Math.min(bottom, vv.offsetTop + vv.height - shift);
+        }
+        const frame = win.frameElement;
+        if (!frame || win.parent === win) break;
+        shift += frame.getBoundingClientRect().top + frame.clientTop;
+        win = win.parent;
+      }
+    } catch (e) { /* surrounding page from another origin */ }
+    const bar = document.querySelector(".top");
+    if (bar) {
+      const r = bar.getBoundingClientRect();
+      if (r.top <= 1) top = Math.max(top, r.bottom);
+    }
+    return { top, bottom };
+  }
+  function keepFieldVisible() {
+    const el = document.activeElement;
+    if (!touch.matches || !typing(el)) {
+      document.body.style.paddingBottom = "";
+      return;
+    }
+    const area = visibleArea();
+    const covered = Math.max(0, Math.round(window.innerHeight - area.bottom));
+    // room to scroll the last fields of the page above the keyboard
+    document.body.style.paddingBottom = covered ? `${covered}px` : "";
+    const r = el.getBoundingClientRect();
+    const margin = 24;
+    if (r.bottom > area.bottom - margin) window.scrollBy(0, r.bottom - area.bottom + margin);
+    else if (r.top < area.top + margin) window.scrollBy(0, r.top - area.top - margin);
+  }
+  let keyboardTimers = [];
+  function watchKeyboard() {
+    keyboardTimers.forEach(clearTimeout);
+    // the keyboard slides in, so look a few times
+    keyboardTimers = [60, 350, 800].map((ms) => setTimeout(keepFieldVisible, ms));
+  }
+  document.addEventListener("focusin", watchKeyboard);
+  document.addEventListener("focusout", watchKeyboard);
+  window.addEventListener("resize", watchKeyboard);
+  try {
+    for (let win = window, depth = 0; win && depth < 5; depth += 1) {
+      if (win.visualViewport) win.visualViewport.addEventListener("resize", watchKeyboard);
+      if (!win.frameElement || win.parent === win) break;
+      win = win.parent;
+    }
+  } catch (e) { /* surrounding page from another origin */ }
 
   setInterval(() => {
     const el = document.activeElement;

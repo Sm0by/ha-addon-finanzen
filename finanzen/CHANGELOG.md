@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.4
+
+- Monat: Auch in den Kontoständen unter „Konten und Töpfe“ lässt sich rechnen, etwa „1.200 − 45,90“
+- Am Handy schiebt sich das Eingabefeld über die Tastatur, auch in der Home-Assistant-App, wo die
+  Tastatur das Feld bisher oft verdeckt hat
+
 ## 1.2.3
 
 - Monat: In den Feldern der Alltagsausgaben lässt sich rechnen, „50,00 + 25“ wird zu 75,00 (auch −, *, /

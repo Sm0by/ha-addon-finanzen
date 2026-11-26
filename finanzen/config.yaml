@@ -1,5 +1,5 @@
 name: Finanzen
-version: "1.2.3"
+version: "1.2.4"
 slug: finanzen
 description: Depot, Fixkosten und Monatsliste – Ersatz für ein Google Sheet mit Apps Script
 url: https://github.com/Sm0by/ha-addon-finanzen
